@@ -42,8 +42,8 @@ tasas_mensuales <- (1 + tasas_anuales)^(1/12) - 1
 # ----------------------------
 vp_usd <- ifelse(
   tasas_mensuales == 0,
-  Inf,  # Perpetuidad con r=0 -> infinito
-  cf_mensual_usd / tasas_mensuales
+  cf_mensual_usd * n_meses,
+  cf_mensual_usd * (1 - (1 + tasas_mensuales)^(-n_meses)) / tasas_mensuales
 )
 
 df <- data.frame(
@@ -56,9 +56,9 @@ df <- data.frame(
 # ----------------------------
 tasa_obj_mensual <- (1 + tasa_objetivo_anual)^(1/12) - 1  # mismo ajuste anual->mensual
 vp_obj_usd <- if (tasa_obj_mensual == 0) {
-  Inf                          # Perpetuidad con r=0 -> infinito
+  cf_mensual_usd * n_meses
 } else {
-  cf_mensual_usd / tasa_obj_mensual
+  cf_mensual_usd * (1 - (1 + tasa_obj_mensual)^(-n_meses)) / tasa_obj_mensual
 }
 vp_obj_musd <- vp_obj_usd / 1e6
 
