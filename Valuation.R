@@ -5,11 +5,15 @@
 
 library(ggplot2)
 
+# Si no lo tenés:
+# install.packages("ggrepel")
+library(ggrepel)
+
 # ----------------------------
 # Parámetros del problema
 # ----------------------------
 cf_mensual_usd <- 3e6      # 3 millones USD por mes
-horizonte_anios <- 10      # <-- Cambiá esto si querés otro horizonte
+horizonte_anios <- 15      # <-- Cambiá esto si querés otro horizonte
 n_meses <- horizonte_anios * 12
 
 # ----------------------------
@@ -77,33 +81,33 @@ vp_musd_desde_tasa <- function(r_anual) {
 vp_obj_musd <- vp_musd_desde_tasa(tasa_objetivo_anual)
 
 df_punto <- data.frame(
+  tipo = "Soberano (US10Y + EMBI)",
   tasa_anual = tasa_objetivo_anual,
-  vp_musd = vp_obj_musd
+  vp_musd = vp_obj_musd,
+  label = sprintf("Soberano: %.1f%%\nVP ≈ %.1f MUSD",
+                  tasa_objetivo_anual * 100, vp_obj_musd)
 )
 
-# ----------------------------
-# Puntos: costo de equity (3 escenarios)
-# ----------------------------
+# Escenarios equity
 df_eq <- data.frame(
-  escenario = factor(
-    c("Conservador", "Razonable", "Prudente"),
-    levels = c("Conservador", "Razonable", "Prudente")
-  ),
-  tasa_anual = c(tasa_eq_conservador, tasa_eq_razonable, tasa_eq_prudente),
-  vp_musd = c(
-    vp_musd_desde_tasa(tasa_eq_conservador),
-    vp_musd_desde_tasa(tasa_eq_razonable),
-    vp_musd_desde_tasa(tasa_eq_prudente)
-  )
+  escenario = c("Conservador", "Razonable", "Prudente"),
+  tasa_anual = c(tasa_eq_conservador, tasa_eq_razonable, tasa_eq_prudente)
+)
+df_eq$vp_musd <- sapply(df_eq$tasa_anual, vp_musd_desde_tasa)
+df_eq$label <- sprintf("%s: %.1f%%\nVP ≈ %.1f MUSD",
+                       df_eq$escenario, df_eq$tasa_anual * 100, df_eq$vp_musd)
+
+# ----------------------------
+# Estética: paleta simple y consistente
+# ----------------------------
+colores_escenarios <- c(
+  "Conservador" = "#1B9E77",
+  "Razonable"   = "#D95F02",
+  "Prudente"    = "#7570B3"
 )
 
-# Etiquetas amigables (sin depender de colores)
-df_eq$label <- sprintf(
-  "%s: %.1f%%\nVP ≈ %.1f MUSD",
-  as.character(df_eq$escenario),
-  df_eq$tasa_anual * 100,
-  df_eq$vp_musd
-)
+color_curva <- "#2B2B2B"
+color_soberano <- "#E7298A"
 
 # ----------------------------
 # Plot
@@ -112,65 +116,95 @@ ggplot(df, aes(x = tasa_anual * 100, y = vp_musd)) +
   # Rango de costo de equity (15% a 18%)
   annotate(
     "rect",
-    xmin = rango_eq_min * 100,
-    xmax = rango_eq_max * 100,
-    ymin = -Inf,
-    ymax = Inf,
-    alpha = 0.12
+    xmin = rango_eq_min * 100, xmax = rango_eq_max * 100,
+    ymin = -Inf, ymax = Inf,
+    alpha = 0.10, fill = "#4C78A8"
   ) +
-  geom_line(linewidth = 1) +
 
-  # Punto soberano (US10y + EMBI)
-  geom_point(data = df_punto, aes(x = tasa_anual * 100, y = vp_musd), size = 3) +
-  geom_vline(xintercept = tasa_objetivo_anual * 100, linetype = "dashed") +
-  annotate(
-    "text",
-    x = tasa_objetivo_anual * 100,
-    y = vp_obj_musd,
-    label = sprintf("US10y 4,1%% + EMBI 5,2%% = 9,3%%\nVP ≈ %.1f MUSD", vp_obj_musd),
-    vjust = -1,
-    hjust = 0.5
+  # Curva
+  geom_line(linewidth = 1.05, color = color_curva) +
+
+  # Línea vertical soberano
+  geom_vline(xintercept = tasa_objetivo_anual * 100, linetype = "dashed",
+             linewidth = 0.7, color = color_soberano, alpha = 0.9) +
+
+  # Punto soberano
+  geom_point(
+    data = df_punto,
+    aes(x = tasa_anual * 100, y = vp_musd),
+    size = 3.2, color = color_soberano
+  ) +
+
+  # Etiqueta soberano (repel)
+  ggrepel::geom_label_repel(
+    data = df_punto,
+    aes(x = tasa_anual * 100, y = vp_musd, label = label),
+    size = 3.4,
+    min.segment.length = 0,
+    box.padding = 0.45,
+    point.padding = 0.25,
+    label.size = 0.2,
+    segment.alpha = 0.6,
+    seed = 123
   ) +
 
   # Líneas verticales para los 3 escenarios (costo de equity)
   geom_vline(
     data = df_eq,
-    aes(xintercept = tasa_anual * 100),
+    aes(xintercept = tasa_anual * 100, color = escenario),
     linetype = "dotdash",
-    linewidth = 0.7
+    linewidth = 0.7,
+    alpha = 0.9
   ) +
   # Puntos para los 3 escenarios
   geom_point(
     data = df_eq,
-    aes(x = tasa_anual * 100, y = vp_musd, shape = escenario),
-    size = 3
+    aes(x = tasa_anual * 100, y = vp_musd, color = escenario),
+    size = 3.0
   ) +
-  # Etiquetas para los 3 escenarios (evita solapamiento básico con vjust)
-  geom_text(
+  # Etiquetas para los 3 escenarios (evita solapamiento básico con repel)
+  ggrepel::geom_label_repel(
     data = df_eq,
-    aes(x = tasa_anual * 100, y = vp_musd, label = label),
-    vjust = -1,
-    hjust = 0.5,
-    size = 3.4
+    aes(x = tasa_anual * 100, y = vp_musd, label = label, color = escenario),
+    size = 3.2,
+    min.segment.length = 0,
+    box.padding = 0.45,
+    point.padding = 0.25,
+    label.size = 0.2,
+    segment.alpha = 0.6,
+    seed = 456,
+    show.legend = FALSE
   ) +
-  # Etiqueta del rango sombreado (sin depender de color)
+
+  # Texto discreto de la banda
   annotate(
-    "text",
+    "label",
     x = ((rango_eq_min + rango_eq_max) / 2) * 100,
-    y = max(df$vp_musd) * 0.92,
-    label = "Rango costo de equity (USD) objetivo: 15% – 18%",
-    vjust = 0,
-    hjust = 0.5,
-    size = 4
+    y = max(df$vp_musd) * 0.93,
+    label = "Rango costo de equity (USD): 15% – 18%",
+    size = 3.6,
+    label.size = 0.2,
+    alpha = 0.95
   ) +
+
+  scale_color_manual(values = colores_escenarios) +
 
   labs(
     x = "Tasa de descuento anual (%)",
     y = "Valor Presente (millones de USD)",
-    title = sprintf(
-      "Valor Presente de flujo mensual constante (%.1f MUSD/mes) — Horizonte: %d años",
-      cf_mensual_usd / 1e6, horizonte_anios
-    )
+    title = sprintf("Valor Presente de flujo mensual constante (%.1f MUSD/mes) — Horizonte: %d años",
+                    cf_mensual_usd / 1e6, horizonte_anios),
+    subtitle = "Curva VP vs tasa anual + punto soberano (US10Y+EMBI) + escenarios de costo de equity"
   ) +
-  theme_minimal() +
-  guides(shape = guide_legend(title = "Escenario (Costo de Equity)"))
+
+  # ✅ Ejes visibles y grilla suave
+  theme_classic(base_size = 12) +
+  theme(
+    axis.line = element_line(linewidth = 0.8, color = "black"),
+    axis.ticks = element_line(color = "black"),
+    plot.title = element_text(face = "bold"),
+    plot.subtitle = element_text(color = "gray30"),
+    panel.grid.major.y = element_line(color = "gray90", linewidth = 0.5),
+    panel.grid.major.x = element_blank(),
+    legend.position = "none"
+  )
