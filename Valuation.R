@@ -208,3 +208,98 @@ ggplot(df, aes(x = tasa_anual * 100, y = vp_musd)) +
     panel.grid.major.x = element_blank(),
     legend.position = "none"
   )
+
+  # ============================
+# MONTE CARLO: distribución del VP (10.000 sims)
+# Tasas ~ Normal(mu, sigma)
+# ============================
+
+set.seed(123)  # reproducible
+
+n_sims <- 10000
+
+# Parámetros de la normal (tasa anual)
+mu_tasa <- 0.1645   # 16,45%
+sigma_tasa <- 0.0165 # 1,65%
+
+tasas_mc <- rnorm(n_sims, mean = mu_tasa, sd = sigma_tasa)
+
+# Recomendación práctica: truncar para evitar tasas negativas
+# (con estos parámetros es rarísimo, pero por prolijidad)
+tasas_mc <- pmax(tasas_mc, 0)
+
+# (Opcional) también podés capear a 30% si querés mantener coherencia con la grilla:
+tasas_mc <- pmin(tasas_mc, 0.30)
+
+vp_mc_musd <- sapply(tasas_mc, vp_musd_desde_tasa)
+
+df_mc <- data.frame(
+  tasa_anual = tasas_mc,
+  vp_musd = vp_mc_musd
+)
+
+# Estadísticos del VP
+vp_media  <- mean(df_mc$vp_musd)
+vp_mediana <- median(df_mc$vp_musd)
+vp_sd     <- sd(df_mc$vp_musd)
+vp_p5     <- unname(quantile(df_mc$vp_musd, 0.05))
+vp_p95    <- unname(quantile(df_mc$vp_musd, 0.95))
+
+df_stats <- data.frame(
+  tipo = c("P5", "Media - 1σ", "Media", "Mediana", "Media + 1σ", "P95"),
+  vp_musd = c(vp_p5, vp_media - vp_sd, vp_media, vp_mediana, vp_media + vp_sd, vp_p95)
+)
+
+df_stats$label <- sprintf(
+  "%s: %.1f MUSD",
+  df_stats$tipo,
+  df_stats$vp_musd
+)
+
+# Para posicionar etiquetas arriba (usamos densidad)
+dens <- density(df_mc$vp_musd)
+y_top <- max(dens$y)
+
+# Gráfico Monte Carlo: histograma + densidad + rug + líneas
+ggplot(df_mc, aes(x = vp_musd)) +
+  geom_histogram(aes(y = after_stat(density)),
+                 bins = 60, alpha = 0.35, fill = "#4C78A8", color = "white") +
+  geom_density(linewidth = 1.0, color = "#2B2B2B") +
+  geom_rug(alpha = 0.15) +
+
+  # Líneas verticales para los estadísticos
+  geom_vline(data = df_stats, aes(xintercept = vp_musd),
+             linewidth = 0.8, linetype = "dashed", color = "#E7298A") +
+
+  # Etiquetas (repel) sin solaparse
+  ggrepel::geom_label_repel(
+    data = df_stats,
+    aes(x = vp_musd, y = y_top * 0.92, label = label),
+    direction = "x",
+    nudge_y = y_top * 0.05,
+    min.segment.length = 0,
+    box.padding = 0.35,
+    point.padding = 0.25,
+    label.size = 0.2,
+    segment.alpha = 0.6,
+    seed = 999
+  ) +
+
+  labs(
+    x = "Valor Presente (millones de USD)",
+    y = "Densidad",
+    title = "Monte Carlo: distribución del VP (flujos constantes)",
+    subtitle = sprintf(
+      "n=%d | Tasa anual ~ Normal(μ=%.2f%%, σ=%.2f%%) | Se marcan P5/P95, media, mediana y ±1σ (sobre VP)",
+      n_sims, mu_tasa * 100, sigma_tasa * 100
+    )
+  ) +
+  theme_classic(base_size = 12) +
+  theme(
+    axis.line = element_line(linewidth = 0.8, color = "black"),
+    axis.ticks = element_line(color = "black"),
+    plot.title = element_text(face = "bold"),
+    plot.subtitle = element_text(color = "gray30"),
+    panel.grid.major.y = element_line(color = "gray90", linewidth = 0.5),
+    panel.grid.major.x = element_blank()
+  )
